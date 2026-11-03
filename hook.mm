@@ -54,15 +54,18 @@ static void hook_present(id self, SEL _cmd) {
 __attribute__((constructor))
 static void on_load() {
     install_dyld_hooks();
-    il2::init();
 
-    Class unityView = NSClassFromString(@"UnityView");
-    if (!unityView) unityView = NSClassFromString(@"UnityDefaultView");
-    if (unityView) {
-        Method m = class_getInstanceMethod(unityView, NSSelectorFromString(@"present"));
-        if (m) {
-            orig_present = method_getImplementation(m);
-            method_setImplementation(m, (IMP)hook_present);
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        il2::init();
+
+        Class unityView = NSClassFromString(@"UnityView");
+        if (!unityView) unityView = NSClassFromString(@"UnityDefaultView");
+        if (unityView) {
+            Method m = class_getInstanceMethod(unityView, NSSelectorFromString(@"present"));
+            if (m) {
+                orig_present = method_getImplementation(m);
+                method_setImplementation(m, (IMP)hook_present);
+            }
         }
-    }
+    });
 }
