@@ -1,23 +1,51 @@
 name: build
-on: [push, workflow_dispatch]
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  dylib:
+  build:
     runs-on: macos-14
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build cheat.dylib
-        run: |
-          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-          clang -dynamiclib -arch arm64 -isysroot "$SDK" -O2 -s \
-            -framework Foundation -framework UIKit \
-            -lobjc -o cheat.dylib \
-            esp.mm menu.mm hook.mm dyld_hide.mm fishhook.c
-          strip -x cheat.dylib
+      - name: Setup Xcode
+        run: sudo xcode-select -s /Applications/Xcode_15.4.app
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+      - name: Build dylib
+        run: |
+          set -e
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          ARCH="-arch arm64 -arch arm64e"
+          MIN="-miphoneos-version-min=14.0"
+          CXXFLAGS="-std=c++17 -fno-exceptions -fno-rtti -fvisibility=hidden"
+          OBJCFLAGS="-fobjc-arc -fmodules"
+
+          mkdir -p build
+
+          # .mm — Objective-C++: нужен и C++17, и ARC
+          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
+            $CXXFLAGS $OBJCFLAGS -c esp.mm   -o build/esp.o
+          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
+            $CXXFLAGS $OBJCFLAGS -c hook.mm  -o build/hook.o
+          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
+            $CXXFLAGS $OBJCFLAGS -c menu.mm  -o build/menu.o
+
+          # линковка dylib
+          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
+            -dynamiclib -fuse-ld=ld \
+            -framework Foundation -framework UIKit -framework CoreGraphics \
+            -Wl,-install_name,@executable_path/cheat.dylib \
+            build/esp.o build/hook.o build/menu.o \
+            -o build/cheat.dylib
+
+          # подпись ad-hoc (иначе iOS не загрузит)
+          codesign -s - --force --deep build/cheat.dylib || true
+
+      - uses: actions/upload-artifact@v4
         with:
-          name: cheat-build
-          path: cheat.dylib
+          name: cheat-dylib
+          path: build/cheat.dylib
