@@ -26,25 +26,24 @@ jobs:
 
           mkdir -p build
 
-          # .mm — Objective-C++: нужен и C++17, и ARC
-          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
-            $CXXFLAGS $OBJCFLAGS -c esp.mm   -o build/esp.o
-          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
-            $CXXFLAGS $OBJCFLAGS -c hook.mm  -o build/hook.o
-          xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
-            $CXXFLAGS $OBJCFLAGS -c menu.mm  -o build/menu.o
+          for f in esp hook menu dyld_hide; do
+            xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
+              $CXXFLAGS $OBJCFLAGS -I. -c "$f.mm" -o "build/$f.o"
+          done
 
-          # линковка dylib
+          xcrun -sdk iphoneos clang $ARCH $MIN -isysroot "$SDK" \
+            -std=c11 -fvisibility=hidden -I. -c fishhook.c -o build/fishhook.o
+
           xcrun -sdk iphoneos clang++ $ARCH $MIN -isysroot "$SDK" \
-            -dynamiclib -fuse-ld=ld \
+            -dynamiclib \
             -framework Foundation -framework UIKit -framework CoreGraphics \
             -Wl,-install_name,@executable_path/cheat.dylib \
             build/esp.o build/hook.o build/menu.o \
+            build/dyld_hide.o build/fishhook.o \
             -o build/cheat.dylib
 
-          # подпись ad-hoc (иначе iOS не загрузит)
           codesign -s - --force --deep build/cheat.dylib || true
-
+          
       - uses: actions/upload-artifact@v4
         with:
           name: cheat-dylib
